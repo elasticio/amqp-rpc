@@ -1,0 +1,4 @@
+./test/**/*.test.js
+--timeout 10000
+--recursive
+--reporter nyan
