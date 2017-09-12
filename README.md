@@ -33,6 +33,12 @@ server.addCommand('print-hello-world', (name) => {
 });
 ```
 
+Handler could also return a promise or async function, e.g.:
+
+```javascript
+server.addCommand('print-hello-world', (name) => Promise.resolve({ message: 'ok' });
+```
+
 To call an RPC command from the client, use `sendCommand()` method:
 
 ```javascript
