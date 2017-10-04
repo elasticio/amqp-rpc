@@ -1,8 +1,13 @@
 # amqp-rpc
 
-RPC over RabbitMQ for Node.js
+different RPC-like tools over RabbitMQ for Node.js
+Provides 
+ * Simple rpc:  AMQPRPCClient and AMQPRPCServer
+ * Remote EventEmitter: AMQPEventsSender AMQPEventsReceiver
+
 
 ## Getting Started
+### RPC
 
 To create a new instance of RPC server/client for RabbitMQ:
 
@@ -48,3 +53,64 @@ const result = await client.sendCommand('print-hello-world', [
 
 assert.deepEqual(result, {foo: 'bar'});
 ```
+
+### Event Emitter
+Events receiver side code
+````javascript
+  const { AMQPEventsReceiver } = require('@elastic.io/amqp-rpc');
+  const amqp = require('amqplib')
+
+  .......
+  const amqpConnection = await amqp.connect('amqp://localhost');
+   
+  const receiver = new AMQPEventsReceiver(amqpConnection);
+  
+  receiver
+    .on('end', () => {
+      console.log('Sender stops to send events, so nothing to do more, disconnecting'); 
+    })
+    .on('close', () => {
+      console.log('Disconnected'); 
+    })
+    .on('error', (e) => {
+      console.log('Error happens', e);
+    })
+    .on('data', (msg) => {
+      console.log('We\'ve got a message', msg); 
+    });
+
+  const queueName = await receiver.receive();
+  console.log(`Use ${queueName} as QUEUE_TO_SEND_EVENTS in sender part of code`); 
+  ........
+  await receiver.disconnect();
+  await amqpConnection.close();
+
+````
+Events source side code
+````javascript
+  const { AMQPEventsSender } = require('@elastic.io/amqp-rpc');
+  const amqp = require('amqplib')
+
+  .......
+  const amqpConnection = await amqp.connect('amqp://localhost');
+   
+  const sender = new AMQPEventsSender(amqpConnection, 'QUEUE_TO_SEND_EVENTS');
+  sender
+    .on('close', () => {
+      console.log('Receiver endpoint has been removed, so sender stop to work'); 
+    })
+    .on('error', (e) => {
+      console.log('Error happens', e);
+    });
+
+  const data = {
+    key: 'value'
+  };
+
+  await sender.send(data);
+  
+  ........
+  await sender.disconnect();
+  await amqpConnection.close();
+
+````
