@@ -1,9 +1,9 @@
-const amqp = require('amqplib');
 const sinon = require('sinon');
 const {assert} = require('chai');
-const {AMQPRPCClient, AMQPRPCServer} = require('../..');
 
-const AMQP_URI = 'amqp://localhost';
+const helpers = require('../helpers.js');
+
+const {AMQPRPCClient, AMQPRPCServer} = require('../..');
 
 describe('AMQPRPCClient to AMQPRPCServer', () => {
   let connection;
@@ -14,7 +14,7 @@ describe('AMQPRPCClient to AMQPRPCServer', () => {
     const exchange = 'exchange-' + String(Date.now()) + Math.random();
     const key = 'key-' + String(Date.now()) + Math.random();
 
-    connection = await amqp.connect(AMQP_URI);
+    connection = await helpers.getAmqpConnection();
     proxy = new AMQPRPCClient(connection, exchange, key);
     agent = new AMQPRPCServer(connection, exchange, key);
 
@@ -23,7 +23,7 @@ describe('AMQPRPCClient to AMQPRPCServer', () => {
 
   afterEach(async () => {
     await agent.disconnect();
-    await connection.close();
+    await helpers.closeAmqpConnection();
   });
 
   it('Should bypass arguments from proxy call to agent', async () => {
