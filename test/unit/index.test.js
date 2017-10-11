@@ -7,5 +7,7 @@ describe('AMQPRPC::EntryPoint', () => {
     assert.isFunction(index.AMQPRPCServer);
     assert.isFunction(index.Command);
     assert.isFunction(index.CommandResult);
+    assert.isFunction(index.AMQPEventsSender);
+    assert.isFunction(index.AMQPEventsReceiver);
   });
 });
