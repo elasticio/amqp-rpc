@@ -68,6 +68,7 @@ class CommandResult {
         message: value.message,
         name: value.name,
         stack: value.stack,
+        code: value.code,
         fileName: value.fileName,
         lineNumber: value.lineNumber,
         columnNumber: value.columnNumber
@@ -115,6 +116,7 @@ class CommandResult {
     if (obj.state === CommandResult.STATES.ERROR) {
       const error = new Error(obj.data.message, obj.data.fileName, obj.data.lineNumber);
       error.stack = obj.data.stack;
+      error.code = obj.data.code;
       error.columnNumber = obj.data.columnNumber;
       obj.data = error;
     }

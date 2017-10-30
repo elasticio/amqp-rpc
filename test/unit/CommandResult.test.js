@@ -40,6 +40,22 @@ describe('AMQPRPC::CommandResult', () => {
       }
     });
   });
+  it('Should pack code with error state', () => {
+    const error = new Error('example error');
+    error.code = 'E_MISSING_FIELD';
+    const result = CommandResult.create(CommandResult.STATES.ERROR, error);
+    const packedObject = JSON.parse(result.pack().toString('utf-8'));
+
+    assert.deepEqual(packedObject, {
+      state: CommandResult.STATES.ERROR,
+      data: {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+        code: 'E_MISSING_FIELD'
+      }
+    });
+  });
 
   it('Should unpack correctly with success state', () => {
     const data = {key: 'value', arrKey: [1, 2, 3]};
