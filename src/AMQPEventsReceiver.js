@@ -20,10 +20,12 @@ class AMQPEventsReceiver extends EventEmitter {
   /**
    * @constructor
    * @param {amqplib.Connection} amqpConnection
+   * @param {String} queueName
    */
-  constructor(amqpConnection) {
+  constructor(amqpConnection, queueName = '') {
     super();
     this._connection = amqpConnection;
+    this._queueName = queueName;
   }
 
   /**
@@ -33,7 +35,7 @@ class AMQPEventsReceiver extends EventEmitter {
   async receive() {
     assert(!this._channel && !this._queue, 'Already receiving');
     this._channel = await this._connection.createChannel();
-    this._queue = await this._channel.assertQueue('', {
+    this._queue = await this._channel.assertQueue(this._queueName, {
       autoDelete: true,
       durabale: true
     });
