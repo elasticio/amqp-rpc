@@ -25,20 +25,20 @@ describe('AMQPEventsReceiver', () => {
 
 
   describe('#contructor', () => {
-    it('should set default queueName', () => {
+
+    it('should be event emitter', () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      expect(receiver).to.be.instanceof(AMQPEventsReceiver);
       expect(receiver).to.be.instanceof(EventEmitter);
+    });
+
+    it('should set connection', () => {
+      const receiver = new AMQPEventsReceiver(connectionStub);
       expect(receiver._connection).to.equal(connectionStub);
-      expect(receiver._queueName).to.equal('');
     });
 
     it('should set default queueName', () => {
       const queueName = 'q';
       const receiver = new AMQPEventsReceiver(connectionStub, queueName);
-      expect(receiver).to.be.instanceof(AMQPEventsReceiver);
-      expect(receiver).to.be.instanceof(EventEmitter);
-      expect(receiver._connection).to.equal(connectionStub, queueName);
       expect(receiver._queueName).to.equal(queueName);
     });
   });
@@ -66,19 +66,18 @@ describe('AMQPEventsReceiver', () => {
       expect(receiver._channel).to.equal(channelStub);
     });
 
-    it('should create amqp queue with autoDelete and durable flags', async () => {
+    it('should create amqp queue with options', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub, 'q');
       const queueStub = {
-        queue: 'q'
+        queue: 'q1'
       };
       channelStub.assertQueue = sinon.stub().returns(Promise.resolve(queueStub));
       const queueName = await receiver.receive();
       expect(channelStub.assertQueue).to.have.been.calledOnce
-        .and.calledWith(receiver._queueName, {
-          autoDelete: true,
-          durabale: true
+        .and.calledWith('q', {
+          durable: true
         });
-      expect(receiver._queue).to.equal(queueStub);
+      expect(receiver._queueName).to.equal(queueStub.queue);
       expect(queueName).to.equal(queueStub.queue);
     });
 

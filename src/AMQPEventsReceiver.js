@@ -35,12 +35,13 @@ class AMQPEventsReceiver extends EventEmitter {
   async receive() {
     assert(!this._channel && !this._queue, 'Already receiving');
     this._channel = await this._connection.createChannel();
-    this._queue = await this._channel.assertQueue(this._queueName, {
-      autoDelete: true,
-      durabale: true
+    const queue = await this._channel.assertQueue(this._queueName, {
+      durable: true
     });
-    this._channel.consume(this._queue.queue, this._handleMessage.bind(this));
-    return this._queue.queue;
+    this._queueName = queue.queue;
+    this._channel.consume(this._queueName, this._handleMessage.bind(this));
+
+    return this._queueName;
   }
 
   /**
@@ -53,7 +54,7 @@ class AMQPEventsReceiver extends EventEmitter {
     const channel = this._channel;
     this._channel = null;
     try {
-      await channel.deleteQueue(this._queue.name);
+      await channel.deleteQueue(this._queueName);
     } catch (e) {
       //it's ok to ignore this error, as queue
       //may be deleted by AMQPStreamSender
