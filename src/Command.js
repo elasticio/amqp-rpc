@@ -12,15 +12,17 @@ class Command {
    *
    * @param {String} command RPC command name
    * @param {Array<*>} args Array of arguments to provide an RPC
+   * @param {replyTo} command RPC command name
    * @example
    * const command = new Command('commandName', [
    *  {foo: 'bar'},
    *  [1, 2, 3]
    * ]);
    */
-  constructor(command, args) {
+  constructor(command, args, replyTo) {
     this.command = command;
     this.args = args;
+    this.replyTo = replyTo;
   }
 
   /**
@@ -29,10 +31,13 @@ class Command {
    * @returns {Buffer}
    */
   pack() {
-    return new Buffer(JSON.stringify({
+    // return new Buffer(JSON.stringify({
+    return JSON.stringify({
       command: this.command,
-      args: this.args
-    }));
+      args: this.args,
+      replyTo: this.replyTo
+      // }));
+    });
   }
 
   /**
@@ -54,15 +59,16 @@ class Command {
    * @returns {Command}
    */
   static fromBuffer(buffer) {
-    const str = buffer.toString('utf-8');
+    // const str = buffer.toString('utf-8');
+    const str = buffer;
     const obj = JSON.parse(str);
 
     assert(obj.command, 'Expect command field to be present and not false in serialized command');
     assert(typeof obj.command === 'string', 'Expect command field to be string');
-    assert(obj.args, 'Expect args field to be present and not false in serialized command');
-    assert(obj.args instanceof Array, 'Expect args field to be array');
+    assert(obj.replyTo, 'Expect replyTo field to be present and not false in serialized command');
+    assert(typeof obj.replyTo === 'string', 'Expect replyTo field to be string');
 
-    return new Command(obj.command, obj.args);
+    return new Command(obj.command, obj.args, obj.replyTo);
   }
 }
 

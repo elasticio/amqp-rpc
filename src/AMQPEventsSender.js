@@ -36,7 +36,7 @@ class AMQPEventsSender extends EventEmitter {
     const channel = await this._initChannel();
     const packedMessage = new Buffer(JSON.stringify(message));
     try {
-      await channel.sendToQueue(this._queueName, packedMessage, {
+      await channel.sendToQueue(this._queueName, packedMessage, { //@todo fix
         mandatory: true
       });
     } catch (e) {

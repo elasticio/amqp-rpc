@@ -34,10 +34,11 @@ class CommandResult {
    * @returns {Buffer}
    */
   pack() {
-    return new Buffer(JSON.stringify({
+    // return new Buffer(JSON.stringify({
+    return JSON.stringify({
       state: this.state,
       data: this.data
-    }, this.constructor._replacer));
+    }, this.constructor._replacer);
   }
 
   /**
@@ -103,7 +104,8 @@ class CommandResult {
    * assert.deepEqual(CommandResult.fromBuffer(buffer), commandResult);
    */
   static fromBuffer(buffer) {
-    const str = buffer.toString('utf-8');
+    const str = buffer;
+    console.log('buffer', str)
     const obj = JSON.parse(str);
 
     assert(obj.state, 'Expect state field to be present and not false it serialized command result');
