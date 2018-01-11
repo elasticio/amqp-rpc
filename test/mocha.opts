@@ -1,5 +1,2 @@
-./test/bootstrap.js
-./test/**/*.test.js
+--require ./test/bootstrap.js
 --timeout 10000
---recursive
---reporter nyan

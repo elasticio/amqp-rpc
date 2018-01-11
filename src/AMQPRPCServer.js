@@ -1,72 +1,64 @@
-const CommandResult = require('./CommandResult');
 const Command = require('./Command');
+const CommandResult = require('./CommandResult');
+const AMQPEndpoint = require('./AMQPEndpoint');
 
 /**
  * Implementation for an AMQP RPC server.
  *
  * @class
  */
-class AMQPRPCServer {
+class AMQPRPCServer extends AMQPEndpoint {
   /**
    * Creates a new instance of RPC server.
    *
-   * @param {*} connection Connection reference created from `amqplib` library.
-   * @param {String} exchange Entry point used for publishing RPC commands
-   * @param {String} key Unique identifier for any instances of the server
-   * @example
-   * const connection = await amqplib.connect(AMPQ_URI);
-   * const exchange = 'SOME_EXCHANGE_STRING';
-   * const key = 'SOME_KEY_STRING';
-   * const server = new AMQPRPCServer(connection, exchange, key);
+   * @param {*} connection Connection reference created from `amqplib` library
+   *
+   * @param {Object} params
+   * @param {String} params.requestsQueue queue when AMQPRPC client sends commands, should correspond with AMQPRPCClient
+   *    default is '' which means auto-generated queue name
    */
-  constructor(connection, exchange, key) {
-    this._connection = connection;
-    this._exchange = exchange;
-    this._key = key;
+  constructor(connection, params = {}) {
+    params.requestsQueue = params.requestsQueue || '';
+
+    super(connection, params);
+
+    this._requestsQueue = params.requestsQueue;
     this._commands = {};
-    this._initialized = false;
-    this._channel = null;
   }
 
   /**
-   * Starts an RPC server.
-   * It will listen for any rpc commands from the client.
-   * Afterwards, it will try to call a specified command via {@link AMQPRPCServer#addCommand}.
+   * Initialize RPC server.
    *
    * @returns {Promise}
+   * @override
    */
   async start() {
-    if (!this._initialized) {
-      this._initialized = true;
-      this._channel = await this._connection.createChannel();
+    await super.start();
 
-      const [queue] = await Promise.all([
-        this._channel.assertQueue('', {exclusive: true}),
-        this._channel.assertExchange(this._exchange)
-      ]);
 
-      await this._channel.bindQueue(queue.queue, this._exchange, String(this._key));
-
-      this._listenQueue(queue.queue);
+    if (this._requestsQueue === '') {
+      const response = await this._channel.assertQueue('', {exclusive: true});
+      this._requestsQueue = response.queue;
     }
+
+    const consumeResult = await this._channel.consume(this._requestsQueue, (msg) => this._handleMsg(msg));
+    this._consumerTag = consumeResult.consumerTag
   }
 
   /**
-   * Disconnects from an RPC queue.
+   * Opposite to this.start()
    *
    * @returns {Promise}
    */
   async disconnect() {
-    try {
-      if (!this._initialized) return;
+    await this._channel.cancel(this._consumerTag);
 
-      await this._channel.close();
-    } catch (e) {
-      throw e;
-    } finally {
-      this._initialized = false;
-      this._channel = {};
+    if (this._params.requestsQueue === '') {
+      await this._channel.deleteQueue(this._requestsQueue);
+      this._requestsQueue = '';
     }
+
+    await super.disconnect();
   }
 
   /**
@@ -83,40 +75,25 @@ class AMQPRPCServer {
   }
 
   /**
-   * Starts listening for the events in specified queue.
    *
    * @private
-   * @param {String} queue Queue name
    */
-  _listenQueue(queue) {
-    this._channel.consume(queue, async (msg) => {
-      this._channel.ack(msg);
+  async _handleMsg(msg) {
 
-      try {
-        const result = await this._dispatchCommand(msg);
+    this._channel.ack(msg);
+    const replyTo = msg.properties.replyTo;
+    const correlationId = msg.properties.correlationId;
 
-        this._sendAnswer(
-          msg.properties.replyTo,
-          new CommandResult(CommandResult.STATES.SUCCESS, result)
-        );
-      } catch (error) {
-        this._sendAnswer(
-          msg.properties.replyTo,
-          new CommandResult(CommandResult.STATES.ERROR, error)
-        );
-      }
-    });
-  }
+    try {
+      const result = await this._dispatchCommand(msg);
 
-  /**
-   * Sends a packet into the queue.
-   *
-   * @private
-   * @param {String} queue Queue name
-   * @param {CommandResult} result
-   */
-  _sendAnswer(queue, result) {
-    this._channel.sendToQueue(queue, result.pack());
+      const content = new CommandResult(CommandResult.STATES.SUCCESS, result).pack();
+      this._channel.sendToQueue(replyTo, content, {correlationId});
+
+    } catch (error) {
+      const content = new CommandResult(CommandResult.STATES.ERROR, error).pack();
+      this._channel.sendToQueue(replyTo, content, {correlationId});
+    }
   }
 
   /**
@@ -133,6 +110,14 @@ class AMQPRPCServer {
     }
 
     throw new Error(`Unknown command ${command.command}`);
+  }
+
+  /**
+   * Allows to get generated value when params.requestsQueue was set to '' (empty string) or omitted
+   * @returns {String} an actual name of the queue used by the instance for receiving replies
+   */
+  get requestsQueue() {
+    return this._requestsQueue;
   }
 }
 

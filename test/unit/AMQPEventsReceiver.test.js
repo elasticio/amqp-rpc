@@ -1,10 +1,12 @@
+'use strict';
+
 const assert = require('assert');
 const EventEmitter = require('events');
 
 const sinon = require('sinon');
-const { expect } = require('chai');
+const {expect} = require('chai');
 
-const { AMQPEventsReceiver } = require('../../');
+const {AMQPEventsReceiver} = require('../../');
 
 describe('AMQPEventsReceiver', () => {
   let channelStub;
@@ -36,49 +38,58 @@ describe('AMQPEventsReceiver', () => {
       expect(receiver._connection).to.equal(connectionStub);
     });
 
-    it('should set default queueName', () => {
+    it('should consider queueName', () => {
       const queueName = 'q';
-      const receiver = new AMQPEventsReceiver(connectionStub, queueName);
+      const receiver = new AMQPEventsReceiver(connectionStub, {queueName});
       expect(receiver._queueName).to.equal(queueName);
     });
   });
 
 
-  describe('#receive', () => {
+  describe('#start', () => {
 
-    it('should trhow if already receiving messages', async () => {
+    it('should throw if already started', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       let caughtError;
       try {
-        await receiver.receive();
+        await receiver.start();
       } catch (e) {
         caughtError = e;
       }
       expect(caughtError).instanceof(assert.AssertionError);
-      expect(caughtError.message).to.equal('Already receiving');
+      expect(caughtError.message).to.equal('Already started');
     });
 
     it('should create amqp channel for work', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       expect(connectionStub.createChannel).to.have.been.calledOnce;
       expect(receiver._channel).to.equal(channelStub);
     });
 
-    it('should create amqp queue with options', async () => {
-      const receiver = new AMQPEventsReceiver(connectionStub, 'q');
+    it('should create generated amqp queue with options', async () => {
+      const receiver = new AMQPEventsReceiver(connectionStub);
       const queueStub = {
         queue: 'q1'
       };
       channelStub.assertQueue = sinon.stub().returns(Promise.resolve(queueStub));
-      const queueName = await receiver.receive();
+      await receiver.start();
       expect(channelStub.assertQueue).to.have.been.calledOnce
-        .and.calledWith('q', {
-          durable: true
-        });
+        .and.calledWith('', {
+        exclusive: true
+      });
       expect(receiver._queueName).to.equal(queueStub.queue);
-      expect(queueName).to.equal(queueStub.queue);
+      expect(receiver.queueName).to.equal(queueStub.queue);
+    });
+
+    it('should skip creating queue when params.queueName is set', async () => {
+      const queueName = 'qq';
+      const receiver = new AMQPEventsReceiver(connectionStub, {queueName});
+      await receiver.start();
+      expect(channelStub.assertQueue).not.to.be.called;
+      expect(receiver.queueName).to.equal(queueName);
+      expect(receiver._queueName).to.equal(queueName);
     });
 
     it('should start listening from queue', async () => {
@@ -89,9 +100,9 @@ describe('AMQPEventsReceiver', () => {
       };
       sinon.spy(channelStub, 'consume');
       receiver._handleMessage = sinon.stub();
-      const queueName = await receiver.receive();
+      await receiver.start();
       expect(channelStub.consume).to.have.been.calledOnce
-        .and.calledWith(queueName, consumerMethod);
+        .and.calledWith(receiver.queueName, consumerMethod);
 
       const msg = {};
       consumerMethod(msg);
@@ -105,7 +116,7 @@ describe('AMQPEventsReceiver', () => {
 
     it('should emit received messages as data events', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       const data = {
         key: 'value'
       };
@@ -119,9 +130,9 @@ describe('AMQPEventsReceiver', () => {
         .and.calledWith(data);
     });
 
-    it('should emit ack receinved messages', async () => {
+    it('should emit ack received messages', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       const data = {
         key: 'value'
       };
@@ -135,7 +146,7 @@ describe('AMQPEventsReceiver', () => {
 
     it('should emit end on queue removal', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       const endEventHandler = sinon.stub();
       receiver.on('end', endEventHandler);
       receiver._handleMessage(null);
@@ -144,7 +155,7 @@ describe('AMQPEventsReceiver', () => {
 
     it('should disconnect on queue removal', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       receiver.disconnect = sinon.stub();
       receiver._handleMessage(null);
       expect(receiver.disconnect).to.have.been.calledOnce;
@@ -156,7 +167,7 @@ describe('AMQPEventsReceiver', () => {
 
     it('should emit close event', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       const closeEventHandler = sinon.stub();
       receiver.on('close', closeEventHandler);
       await receiver.disconnect();
@@ -170,27 +181,34 @@ describe('AMQPEventsReceiver', () => {
       expect(channelStub.close).not.to.be.called;
     });
 
-    it('should delete queue', async () => {
+    it('should delete queue if it was created by receiver', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      const queueName = await receiver.receive();
+      await receiver.start();
       await receiver.disconnect();
       expect(channelStub.deleteQueue).to.have.been.calledOnce
-        .and.calledWith(queueName);
+        .and.calledWith(receiver.queueName);
     });
 
-    it('should not fail if trying to delete nonexistant queue', async () => {
+    it('should not delete queue if params.queueName is set', async () => {
+      const receiver = new AMQPEventsReceiver(connectionStub, {queueName: 'qqqq'});
+      await receiver.start();
+      await receiver.disconnect();
+      expect(channelStub.deleteQueue).not.to.be.called;
+    });
+
+    it('should not fail if trying to delete non existent queue', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      const queueName = await receiver.receive();
+      await receiver.start();
       channelStub.deleteQueue = sinon.stub().returns(Promise.reject(new Error('there are no queue')));
       await receiver.disconnect();
       expect(channelStub.deleteQueue).to.have.been.calledOnce
-        .and.calledWith(queueName);
+        .and.calledWith(receiver.queueName);
       expect(channelStub.close).to.have.been.calledOnce;
     });
 
     it('should close channel', async () => {
       const receiver = new AMQPEventsReceiver(connectionStub);
-      await receiver.receive();
+      await receiver.start();
       await receiver.disconnect();
       expect(channelStub.close).to.have.been.calledOnce;
     });

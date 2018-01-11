@@ -1,3 +1,5 @@
+'use strict';
+
 const {assert} = require('chai');
 const {Command} = require('../..');
 
@@ -21,6 +23,17 @@ describe('AMQPRPC::Command', () => {
 
     assert.instanceOf(packedCommand, Buffer);
     assert.deepEqual(contentAsObject, {args, command: commandName});
+  });
+
+  it('Should allow to omit args', () => {
+    const commandName = 'do_the_work_with_no_any_question';
+    const command = Command.create(commandName);
+    const packedCommand = command.pack();
+    const bufferContent = packedCommand.toString('utf-8');
+    const contentAsObject = JSON.parse(bufferContent);
+
+    assert.instanceOf(packedCommand, Buffer);
+    assert.deepEqual(contentAsObject, {args: [], command: commandName});
   });
 
   it('Should unpack correctly', () => {

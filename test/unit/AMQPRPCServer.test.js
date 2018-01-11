@@ -1,64 +1,127 @@
+'use strict';
+
 const sinon = require('sinon');
-const {assert} = require('chai');
+const {expect} = require('chai');
 
-const helpers = require('../helpers.js');
+const {AMQPRPCServer} = require('../../');
 
-const {AMQPRPCClient, AMQPRPCServer} = require('../..');
+describe('AMQPRPCServer', () => {
+  let channelStub;
+  let connectionStub;
 
-describe('AMQPRPCClient to AMQPRPCServer', () => {
-  let connection;
-  let proxy;
-  let agent;
-
-  beforeEach(async () => {
-    const exchange = 'exchange-' + String(Date.now()) + Math.random();
-    const key = 'key-' + String(Date.now()) + Math.random();
-
-    connection = await helpers.getAmqpConnection();
-    proxy = new AMQPRPCClient(connection, exchange, key);
-    agent = new AMQPRPCServer(connection, exchange, key);
-
-    await agent.start();
+  beforeEach(() => {
+    channelStub = {
+      ack: sinon.stub().returns(Promise.resolve()),
+      assertQueue: sinon.stub().returns(Promise.resolve({})),
+      cancel: sinon.stub().returns(Promise.resolve()),
+      close: sinon.stub().returns(Promise.resolve()),
+      consume: sinon.stub().returns(Promise.resolve({consumerTag: (Math.random() * 1000 | 0).toString(16)})),
+      deleteQueue: sinon.stub().returns(Promise.resolve()),
+      sendToQueue: sinon.stub().returns(Promise.resolve())
+    };
+    connectionStub = {
+      createChannel: sinon.stub().returns(Promise.resolve(channelStub))
+    };
   });
 
-  afterEach(async () => {
-    await agent.disconnect();
-    await helpers.closeAmqpConnection();
+
+  describe('#contructor', () => {
+    it('should consider params.requestsQueue', () => {
+      const requestsQueue = 'q';
+      const server = new AMQPRPCServer(connectionStub, {requestsQueue});
+      expect(server.requestsQueue).to.equal(requestsQueue);
+    });
   });
 
-  it('Should bypass arguments from proxy call to agent', async () => {
-    const commandStub = sinon.stub();
-    const args = ['string argument', {key: 'value'}, [1, 2, 3]];
 
-    agent.addCommand('command', commandStub);
-    await proxy.sendCommand('command', args);
+  describe('#start', () => {
 
-    assert.ok(commandStub.calledOnce);
-    assert.deepEqual(commandStub.getCall(0).args, args);
-  });
-
-  it('Should bypass execution result from agent to proxy call', async () => {
-    const args = ['string argument', {key: 'value'}, [1, 2, 3]];
-    const result = {key: 'value', arrayKey: [1, 2, 3]};
-    const commandStub = sinon.spy(() => result);
-
-    agent.addCommand('command', commandStub);
-
-    assert.deepEqual(await proxy.sendCommand('command', args), result);
-    assert.ok(commandStub.calledOnce);
-    assert.ok(commandStub.getCall(0).args, args);
-  });
-
-  it('Should bypass error thrown from agent to proxy call', async () => {
-    agent.addCommand('errorCommand', () => {
-      throw new Error('ERROR');
+    it('should create amqp channel for work', async () => {
+      const server = new AMQPRPCServer(connectionStub);
+      await server.start();
+      expect(connectionStub.createChannel).to.have.been.calledOnce;
+      expect(server._channel).to.equal(channelStub);
     });
 
-    try {
-      await proxy.sendCommand('errorCommand', []);
-    } catch (e) {
-      assert.instanceOf(e, Error);
-      assert.equal(e.toString(), 'Error: ERROR');
-    }
+    it('should create generated amqp queue with options', async () => {
+      const server = new AMQPRPCServer(connectionStub);
+      const queueStub = {
+        queue: 'q1'
+      };
+      channelStub.assertQueue = sinon.stub().returns(Promise.resolve(queueStub));
+      await server.start();
+      expect(channelStub.assertQueue).to.have.been.calledOnce
+        .and.calledWith('', {
+        exclusive: true
+      });
+      expect(server.requestsQueue).to.equal(queueStub.queue);
+    });
+
+    it('should skip creating queue when params.queueName is set', async () => {
+      const requestsQueue = 'qq';
+      const server = new AMQPRPCServer(connectionStub, {requestsQueue});
+      await server.start();
+      expect(channelStub.assertQueue).not.to.be.called;
+      expect(server.requestsQueue).to.equal(requestsQueue);
+    });
+
+    it('should start listening from queue', async () => {
+      const server = new AMQPRPCServer(connectionStub);
+      let consumerMethod;
+      channelStub.consume = (queueName, cb) => {
+        consumerMethod = cb;
+        return {
+          consumerTag: (Math.random() * 1000 | 0).toString(16)
+        };
+      };
+      sinon.spy(channelStub, 'consume');
+      server._handleMsg = sinon.stub();
+      await server.start();
+      expect(channelStub.consume).to.have.been.calledOnce
+        .and.calledWith(server.queueName, consumerMethod);
+
+      const msg = {};
+      consumerMethod(msg);
+      expect(server._handleMsg).to.have.been.calledOnce
+        .and.calledWith(msg);
+    });
+  });
+
+
+  describe('#disconnect', () => {
+
+    it('should delete queue if it was created by server', async () => {
+      const server = new AMQPRPCServer(connectionStub);
+      await server.start();
+      const requestsQueue = server.requestsQueue;
+      await server.disconnect();
+      expect(channelStub.deleteQueue).to.have.been.calledOnce
+        .and.calledWith(requestsQueue);
+    });
+
+    it('should not delete queue if params.repliesQueue is set', async () => {
+      const server = new AMQPRPCServer(connectionStub, {requestsQueue: 'qqqq'});
+      await server.start();
+      await server.disconnect();
+      expect(channelStub.deleteQueue).not.to.be.called;
+    });
+
+    it('should cancel subscription', async () => {
+      const requestsQueue = 'q4';
+      const consumerTag = 'b-17';
+      channelStub.consume = sinon.stub().returns(Promise.resolve({consumerTag}));
+      const server = new AMQPRPCServer(connectionStub, {requestsQueue});
+      await server.start();
+      await server.disconnect();
+      expect(channelStub.cancel).to.have.been.calledOnce
+        .and.calledWith(consumerTag);
+    });
+
+    it('should close channel', async () => {
+      const server = new AMQPRPCServer(connectionStub);
+      await server.start();
+      await server.disconnect();
+      expect(channelStub.close).to.have.been.calledOnce;
+    });
   });
 });

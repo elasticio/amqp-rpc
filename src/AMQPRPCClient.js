@@ -1,122 +1,155 @@
 const Command = require('./Command');
 const CommandResult = require('./CommandResult');
+const AMQPEndpoint = require('./AMQPEndpoint');
 
 /**
  * This class is responsible for sending commands to the RPC server.
  *
  * @class
  */
-class AMQPRPCClient {
+class AMQPRPCClient extends AMQPEndpoint {
   /**
    * Creates a new instance of an RPC client.
    *
    * @param {*} connection Instance of `amqplib` library
-   * @param {String} exchange Exchange
-   * @param {String} key Key
-   * @param {Object} options Additional options for the client
-   * @param {Number} [options.timeout=60000] Timeout for cases when server is not responding
+   *
+   * @param {Object} params
+   * @param {String} params.requestsQueue queue for sending commands, should correspond with AMQPRPCServer
+   * @param {String} [params.repliesQueue=''] queue for feedback from AMQPRPCServer,
+   *    default is '' which means auto-generated queue name
+   * @param {Number} [params.timeout=60000] Timeout for cases when server is not responding
    */
-  constructor(connection, exchange, key, options) {
-    this._connection = connection;
-    this._exchange = exchange;
-    this._key = key;
-    this._options = Object.assign({timeout: AMQPRPCClient.TIMEOUT}, options);
-    this._channel = null;
+  constructor(connection, params = {}) {
+    params.repliesQueue = params.repliesQueue || '';
+    params.timeout = params.timeout || AMQPRPCClient.TIMEOUT;
+
+    if (!params.requestsQueue) {
+      throw new Error('params.requestsQueue is required');
+    }
+    super(connection, params);
+
+    this._repliesQueue = params.repliesQueue;
+    this._cmdNumber = 0;
+    this._requests = new Map();
   }
 
   /**
    * Send a command into RPC queue.
    *
    * @param {String} command Command name
-   * @param {Array<*>} args Array of any arguments provided to the RPC server callback
+   * @param [Array<*>] args Array of any arguments provided to the RPC server callback
    * @returns {Promise<*>}
    * @example
-   * client.sendCommand('some-command-name', [
-   *  {foo: 'bar'},
-   *  [1, 2, 3]
-   * ]);
+   * client.sendCommand('some-command-name', [{foo: 'bar'}, [1, 2, 3]]);
    */
   async sendCommand(command, args) {
-    return await this._sendCommand(new Command(command, args));
-  }
+    const cmd = new Command(command, args);
 
-  /**
-   * Disconnect from RPC channel.
-   *
-   * @returns {Promise}
-   */
-  async disconnect() {
-    if (this._channel) {
-      await this._channel.close()
-    }
+    const correlationId = String(this._cmdNumber++);
+    const replyTo = this._repliesQueue;
+    const timeout = this._params.timeout;
+    const requestsQueue = this._params.requestsQueue;
+
+    let resolve;
+    let reject;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    const timer = setTimeout(() => this._cancel(correlationId, `timeout (${timeout})`), timeout);
+    this._requests.set(correlationId, {
+      timer,
+      resolve,
+      reject,
+      command
+    });
+    this._channel.sendToQueue(
+      requestsQueue,
+      cmd.pack(),
+      {replyTo, correlationId}
+    );
+
+    return promise;
   }
 
   /**
    * Initialize RPC client.
    *
-   * @private
    * @returns {Promise}
+   * @override
    */
-  async _init() {
-    if (!this._initPromise) {
-      this._initPromise = (async () => {
-        this._channel = await this._connection.createChannel();
-        await this._channel.assertExchange(this._exchange, 'direct');
-      })();
+  async start() {
+    await super.start();
+    if (this._params.repliesQueue === '') {
+      const response = await this._channel.assertQueue('', {exclusive: true});
+      this._repliesQueue = response.queue;
     }
 
-    await this._initPromise;
+    const consumeResult = await this._channel.consume(this._repliesQueue, (msg) => this._dispatchReply(msg));
+    this._consumerTag = consumeResult.consumerTag
   }
 
   /**
-   * Sends a command into queue.
+   * Opposite to this.start()
    *
-   * @private
-   * @param {Command} command
    * @returns {Promise}
    */
-  async _sendCommand(command) {
-    await this._init();
+  async disconnect() {
+    await this._channel.cancel(this._consumerTag);
 
-    const responseQ = await this._channel.assertQueue('', {exclusive: true});
-    const promise = new Promise((resolve, reject) => {
-      const timeout = setTimeout(reject, this._options.timeout, new Error('Timeout'));
+    if (this._params.repliesQueue === '') {
+      await this._channel.deleteQueue(this._repliesQueue);
+      this._repliesQueue = '';
+    }
 
-      const consumeResult = this._channel.consume(responseQ.queue, async (msg) => {
-        clearTimeout(timeout);
+    this._requests.forEach((context, correlationId) => this._cancel(correlationId, 'client disconnect'));
+    await super.disconnect();
+  }
 
-        const consumerTag = (await consumeResult).consumerTag;
 
-        await this._channel.cancel(consumerTag);
-        await this._channel.deleteQueue(responseQ.queue);
+  /**
+   * Replies handler
+   * @param {Object} msg, returned by channel.consume
+   * @private
+   * @returns {Promise}
+   */
+  async _dispatchReply(msg) {
+    this._channel.ack(msg);
+    if (!msg) {
+      //skip, it's queue close message
+      return;
+    }
 
-        if (!msg) {
-          //skip, it's queue close message
-          return;
-        }
+    const correlationId = msg.properties.correlationId;
+    const context = this._requests.get(correlationId);
+    this._requests.delete(correlationId);
+    if (!context) {
+      //it would be good to notice somehow, but we don't have logger or something here at all
+      return;
+    }
 
-        try {
-          const response = CommandResult.fromBuffer(msg.content);
+    const {resolve, timer, reject} = context;
+    clearTimeout(timer);
 
-          if (response.state === CommandResult.STATES.ERROR) {
-            reject(response.data);
-          } else {
-            resolve(response.data);
-          }
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
+    try {
+      const response = CommandResult.fromBuffer(msg.content);
 
-    this._channel.publish(
-      this._exchange,
-      this._key,
-      command.pack(),
-      {replyTo: responseQ.queue}
-    );
+      if (response.state === CommandResult.STATES.ERROR) {
+        reject(response.data);
+      } else {
+        resolve(response.data);
+      }
+    } catch (e) {
+      reject(e);
+    }
+  }
 
-    return await promise;
+  _cancel(correlationId, reason) {
+    const context = this._requests.get(correlationId);
+    const {timer, reject, command} = context;
+    clearTimeout(timer);
+    reject(new Error(`sendCommand canceled due to ${reason}, command:${command}, correlationId:${correlationId}`));
   }
 
   /**
@@ -127,6 +160,14 @@ class AMQPRPCClient {
    */
   static get TIMEOUT() {
     return 60 * 1000;
+  }
+
+  /**
+   * Allows to get generated value when params.repliesQueue was set to '' (empty string) or omitted
+   * @returns {String} an actual name of the queue used by the instance for receiving replies
+   */
+  get repliesQueue() {
+    return this._repliesQueue;
   }
 }
 

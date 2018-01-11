@@ -18,7 +18,7 @@ class Command {
    *  [1, 2, 3]
    * ]);
    */
-  constructor(command, args) {
+  constructor(command, args = []) {
     this.command = command;
     this.args = args;
   }

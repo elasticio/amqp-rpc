@@ -1,7 +1,7 @@
 {
   "name": "@elastic.io/amqp-rpc",
   "description": "RPC over RabbitMQ for Node.js",
-  "version": "1.1.2",
+  "version": "2.0.0",
   "homepage": "http://elastic.io",
   "author": "elastic.io GmbH <info@elastic.io>",
   "main": "src/index.js",
@@ -20,18 +20,20 @@
     "docs": "rimraf ./docs && jsdox --output ./docs ./src",
     "lint": "eslint --ignore-path .gitignore .",
     "prepublish": "npm run lint && npm run test",
-    "test": "istanbul cover _mocha"
+    "test": "node_modules/.bin/mocha --require ./test/bootstrap.js --timeout 10000 --recursive --reporter nyan ./test/**/*.test.js",
+    "cover": "istanbul cover node_modules/.bin/_mocha --  --require ./test/bootstrap.js --timeout 10000 --recursive --reporter nyan ./test/**/*.test.js"
   },
   "devDependencies": {
     "amqplib": "0.5.1",
     "chai": "4.1.2",
+    "chai-as-promised": "7.1.1",
     "eslint": "4.6.1",
     "eslint-config-node": "1.6.0",
     "istanbul": "0.4.5",
     "jsdox": "0.4.10",
     "mocha": "3.5.3",
     "rimraf": "2.6.2",
-    "sinon": "3.2.1",
-    "sinon-chai": "2.13.0"
+    "sinon": "4.1.2",
+    "sinon-chai": "2.14.0"
   }
 }

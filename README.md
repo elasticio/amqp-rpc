@@ -19,10 +19,12 @@ const key = 'KEY';
 
 async function init() {
   const connection = await amqplib.connect('amqp://localhost');
-  const server = new AMQPRPCServer(connection, exchange, key);
-  const client = new AMQPRPCClient(connection, exchange, key);
-  
+  const server = new AMQPRPCServer(connection);
   await server.start();
+  const requestsQueue = server.requestsQueue;
+  
+  const client = new AMQPRPCClient(connection, {requestsQueue});
+  await client.start();
   
   return {server, client};
 }
@@ -79,7 +81,9 @@ Events receiver side code
       console.log('We\'ve got a message', msg); 
     });
 
-  const queueName = await receiver.receive();
+  await receiver.start();
+  const queueName = receiver.queueName; 
+  
   console.log(`Use ${queueName} as QUEUE_TO_SEND_EVENTS in sender part of code`); 
   ........
   await receiver.disconnect();
@@ -107,6 +111,7 @@ Events source side code
     key: 'value'
   };
 
+  await sender.start();
   await sender.send(data);
   
   ........

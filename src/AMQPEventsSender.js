@@ -18,26 +18,32 @@ class AMQPEventsSender extends EventEmitter {
   /**
    * @constructor
    * @param {amqplib.Connection} amqpConnection
-   * @param {String} queueName endpoint address, to send data to
+   * @param {Object} params
+   * @param {String} [params.queueName] queue for sending events, should correspond with AMQPEventsReceiver
+   * @param {Number} [params.TTL=AMQPEventsSender.TTL] TTL of messages
    */
-  constructor(amqpConnection, queueName) {
+  constructor(amqpConnection, params = {}) {
     super();
     this._connection = amqpConnection;
-    this._queueName = queueName;
-    this._channelPromise = null;
+
+    this._params = params;
+    params.TTL = params.TTL || AMQPEventsSender.TTL;
+    this._queueName = params.queueName;
+
+    this._channel = null;
   }
 
   /**
    * Send message to receiver
-   * @param {*} message, anything that may be stringified bu JSON.stringify
+   * @param {*} message, anything that may be serialized by JSON.stringify
    * @retiurns {Promise}
    */
   async send(message) {
-    const channel = await this._initChannel();
     const packedMessage = new Buffer(JSON.stringify(message));
     try {
-      await channel.sendToQueue(this._queueName, packedMessage, {
-        mandatory: true
+      await this._channel.sendToQueue(this._queueName, packedMessage, {
+        mandatory: true,
+        expiration: this._params.TTL
       });
     } catch (e) {
       this.emit('error', e);
@@ -45,55 +51,44 @@ class AMQPEventsSender extends EventEmitter {
   }
 
   /**
-   * Disconnect from event channel
-   * @returns {Promise}
+   * Opposite to this.start() – closing communication channel
+   * NOTE! Race condition is not handled here,
+   *    so it's better to not invoke the method several times (e.g. from multiple "threads")
+   *
+   * @return {Promise<void>}
    */
   async disconnect() {
-    if (this._channelPromise) {
-      let channel;
+    if (this._channel) {
       try {
-        channel = await this._channelPromise;
+        await this._channel.close();
       } catch (e) {
-        //broken channel -- nothing to close;
-        this._channelPromise = null;
-        return;
-      }
-      try {
-        await channel.deleteQueue(this._queueName);
-      } catch (e) {
-        //skip this error, there may be no queue
-      }
-      try {
-        await channel.close();
-      } catch (e) {
-        this._channelPromise = null;
+        this._channel = null;
         this.emit('error', e);
         return;
       }
       this.emit('close');
-      this._channelPromise = null;
+      this._channel = null;
     }
   }
 
   /**
-   * Create and intialize amqp channel for communication
-   * @returns {Promise}
+   * Channel initialization, has to be done before starting working
+   * NOTE! Race condition is not handled here,
+   *    so it's better to not invoke the method several times (e.g. from multiple "threads")
+   *
+   * @return {Promise<void>}
    */
-  _initChannel() {
-    if (this._channelPromise) {
-      return this._channelPromise;
+  async start() {
+    if (this._channel) {
+      return;
     }
-    return this._channelPromise = this._connection.createChannel()
-      .then(
-        (channel) => {
-          this._subscribeToChannel(channel);
-          return channel;
-        },
-        (error) => {
-          this.emit('error', error);
-          return Promise.reject(error);
-        }
-      );
+    try {
+      this._channel = await this._connection.createChannel();
+      this._subscribeToChannel();
+    } catch (error) {
+      this.emit('error', error);
+      // throw error;
+    }
   }
 
   /**
@@ -101,9 +96,9 @@ class AMQPEventsSender extends EventEmitter {
    * Events used to understand, if listener is ok
    * and/or for error handling
    */
-  _subscribeToChannel(channel) {
-    channel
-      .on('return', async ({ fields }) => {
+  _subscribeToChannel() {
+    this._channel
+      .on('return', async ({fields}) => {
         if (fields && fields.routingKey === this._queueName) {
           this.disconnect();
         }
@@ -113,5 +108,15 @@ class AMQPEventsSender extends EventEmitter {
       });
   }
 
+  /**
+   * Returns a timeout for a command result retrieval.
+   *
+   * @static
+   * @returns {Number}
+   */
+  static get TTL() {
+    return 10 * 60 * 1000;
+  }
 }
+
 module.exports = AMQPEventsSender;

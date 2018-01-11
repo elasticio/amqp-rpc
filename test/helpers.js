@@ -13,7 +13,7 @@ module.exports.getAmqpConnection = async function () {
     amqpConn = await amqp.connect(AMQP_URI);
   }
   return amqpConn;
-}
+};
 
 /**
  * Close currently opened amqp connection
@@ -23,4 +23,4 @@ module.exports.closeAmqpConnection = async function () {
     await amqpConn.close();
     amqpConn = null;
   }
-}
+};
