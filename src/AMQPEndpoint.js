@@ -15,7 +15,7 @@ class AMQPEndpoint {
   constructor(connection, params = {}) {
     this._connection = connection;
     this._channel = null;
-    this._params = params;
+    this._params = Object.assign({}, params);
   }
 
   /**

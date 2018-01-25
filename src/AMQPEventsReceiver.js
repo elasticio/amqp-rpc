@@ -29,10 +29,10 @@ class AMQPEventsReceiver extends EventEmitter {
 
     this._connection = amqpConnection;
 
-    this._params = params;
-    params.queueName = params.queueName || '';
-    params.TTL = params.TTL || AMQPEventsReceiver.TTL;
-    this._queueName = params.queueName;
+    this._params = Object.assign({
+      queueName: ''
+    }, params);
+    this._queueName = this._params.queueName;
 
     this._channel = null;
   }

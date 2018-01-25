@@ -26,8 +26,9 @@ class AMQPEventsSender extends EventEmitter {
     super();
     this._connection = amqpConnection;
 
-    this._params = params;
-    params.TTL = params.TTL || AMQPEventsSender.TTL;
+    this._params = Object.assign({
+      TTL: AMQPEventsSender.TTL
+    }, params);
     this._queueName = params.queueName;
 
     this._channel = null;
