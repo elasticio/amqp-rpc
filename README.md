@@ -11,20 +11,19 @@ Provides
 
 There are two ways to run AMQPRPCServer/Client:
 
-#### temporary queue
+#### Temporary queue
 1. The server starts without any predefined queueName, asserts temporary queue.
 2. Generated `queueName` retrieved from the `server` instance and passed somehow to the `client` (one or many). It's supposed, that this transfer isn't covered by `amqp-rpc` lib and it should be implemented somehow by the developer of code, which uses `amqp-rpc`.
 3. Each client gets this queueName and uses it before initialization.
 
-#### permanent queue
+#### Permanent queue
 1. A queue is created somehow by an external service.
 2. `server` gets the name of the queue before initialization and starts listening.
 3. `client` gets the same name before initialization and uses it for sending requests.
 
 
-#####Example with temporary queue:
+#### Example with temporary queue:
 
-Server:
 ```javascript
 const amqplib = require('amqplib');
 const {AMQPRPCServer, AMQPRPCClient} = require('@elasic.io/amqp-rpc');
@@ -53,7 +52,7 @@ async function init() {
 Full working example you could find [here](examples/amqp-rpc-with-tmp-queue.js).
 
 
-######Example with permanent queue:
+#### Example with permanent queue:
 
 ```javascript
 const amqplib = require('amqplib');
