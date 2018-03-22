@@ -9,35 +9,89 @@ Provides
 ## Getting Started
 ### RPC
 
-To create a new instance of RPC server/client for RabbitMQ:
+There are two ways to run AMQPRPCServer/Client:
 
+#### temporary queue
+1. The server starts without any predefined queueName, asserts temporary queue.
+2. Generated `queueName` retrieved from the `server` instance and passed somehow to the `client` (one or many). It's supposed, that this transfer isn't covered by `amqp-rpc` lib and it should be implemented somehow by the developer of code, which uses `amqp-rpc`.
+3. Each client gets this queueName and uses it before initialization.
+
+#### permanent queue
+1. A queue is created somehow by an external service.
+2. `server` gets the name of the queue before initialization and starts listening.
+3. `client` gets the same name before initialization and uses it for sending requests.
+
+
+#####Example with temporary queue:
+
+Server:
 ```javascript
-const amqplib = require('ampqlib');
+const amqplib = require('amqplib');
 const {AMQPRPCServer, AMQPRPCClient} = require('@elasic.io/amqp-rpc');
-const exchange = 'EXCHANGE';
-const key = 'KEY';
+
 
 async function init() {
   const connection = await amqplib.connect('amqp://localhost');
+  
+  // server start
   const server = new AMQPRPCServer(connection);
+  server.addCommand('hello', (name) => ({message: `Hello, ${name}!`}));  
   await server.start();
+  
+  // name of temporary queue, has to be passed somehow to client by external service
   const requestsQueue = server.requestsQueue;
   
+  // client start
   const client = new AMQPRPCClient(connection, {requestsQueue});
   await client.start();
+  const response = await client.sendCommand('hello', ['Alisa']);
+  console.log('Alisa got response:', response);
+  
+  return {server, client};
+}
+```
+Full working example you could find [here](examples/amqp-rpc-with-tmp-queue.js).
+
+
+######Example with permanent queue:
+
+```javascript
+const amqplib = require('amqplib');
+const {AMQPRPCServer, AMQPRPCClient} = require('@elasic.io/amqp-rpc');
+
+
+async function init() {
+  
+  const connection = await amqplib.connect('amqp://localhost');
+  
+  // initial setup (e.g. should be provided on first launch)
+  const queueName = 'predefined-queue-name';
+  const channel = await connection.createChannel();
+  await channel.assertQueue(queueName);
+  
+  // server start
+  const server = new AMQPRPCServer(connection, {queueName});
+  server.addCommand('hello', (name) => ({message: `Hello, ${name}!`}));
+  await server.start();
+  
+  // client start
+  const client = new AMQPRPCClient(connection, {requestsQueue:queueName});
+  await client.start();
+  const response = await client.sendCommand('hello', ['Alisa']);
+  console.log('Alisa got response:', response);
   
   return {server, client};
 }
 ```
 
+Full working example you could find [here](examples/amqp-rpc-with-permanent-queue.js).
+
+#### Server handlers
+
 To register a new RPC command in the server, use `addCommand()` method:
 
 ```javascript
-server.addCommand('print-hello-world', (name) => {
-  console.log('Hello, ${name}!');
-  
-  return {foo: 'bar'};
-});
+server.addCommand('hello', (name) => ({message: `Hello, ${name}!`}));
 ```
 
 Handler could also return a promise or async function, e.g.:
@@ -52,9 +106,8 @@ To call an RPC command from the client, use `sendCommand()` method:
 const result = await client.sendCommand('print-hello-world', [
   'World'
 ]);
-
-assert.deepEqual(result, {foo: 'bar'});
 ```
+
 
 ### Event Emitter
 Events receiver side code
