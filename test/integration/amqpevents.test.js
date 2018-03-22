@@ -157,7 +157,7 @@ describe('AMQPEventsSender AMQPEventsReceiver', () => {
     });
   });
   describe('on sender disconnect', () => {
-    it.skip('stream receiver should close itself', async () => {
+    it.skip('stream receiver should close itself', async () => { // eslint-disable-line
       // this feature was broken while implementing external permission support
       // it was hard to fix this, so decided to leave it as is for now (kind of YAGNI)
       const receiver = new AMQPEventsReceiver(amqpConn);
