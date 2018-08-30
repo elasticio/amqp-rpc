@@ -64,17 +64,17 @@ async function init() {
   const connection = await amqplib.connect('amqp://localhost');
   
   // initial setup (e.g. should be provided on first launch)
-  const queueName = 'predefined-queue-name';
+  const requestsQueue = 'predefined-queue-name';
   const channel = await connection.createChannel();
-  await channel.assertQueue(queueName);
+  await channel.assertQueue(requestsQueue);
   
   // server start
-  const server = new AMQPRPCServer(connection, {queueName});
+  const server = new AMQPRPCServer(connection, { requestsQueue });
   server.addCommand('hello', (name) => ({message: `Hello, ${name}!`}));
   await server.start();
   
   // client start
-  const client = new AMQPRPCClient(connection, {requestsQueue:queueName});
+  const client = new AMQPRPCClient(connection, { requestsQueue });
   await client.start();
   const response = await client.sendCommand('hello', ['Alisa']);
   console.log('Alisa got response:', response);
