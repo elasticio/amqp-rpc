@@ -4,6 +4,7 @@ const sinon = require('sinon');
 const {expect} = require('chai');
 
 const {AMQPRPCClient} = require('../../');
+const Command = require('../../src/Command');
 
 describe('AMQPRPCClient', () => {
   let channelStub;
@@ -40,6 +41,46 @@ describe('AMQPRPCClient', () => {
       const client = new AMQPRPCClient(connectionStub, {timeout, requestsQueue: 'q'});
       expect(client._params.timeout).to.equal(timeout);
     });
+  });
+
+  describe('#sendCommand', () => {
+    let client;
+
+    beforeEach(async () => {
+      client = new AMQPRPCClient(connectionStub, { requestsQueue: 'q', repliesQueue: 'r' });
+      await client.start();
+    });
+
+    it('should call sendToQueue when called with name only', () => {
+      client.sendCommand('test');
+
+      expect(channelStub.sendToQueue).to.have.been.calledOnce.and
+        .calledWith('q',
+          new Command('test').pack(),
+          { correlationId: "0", replyTo: "r" }
+        );
+    });
+
+    it('should call sendToQueue when called with name and args', () => {
+      client.sendCommand('test', [1, 'foo']);
+
+      expect(channelStub.sendToQueue).to.have.been.calledOnce.and
+        .calledWith('q',
+          new Command('test', [1, 'foo']).pack(),
+          { correlationId: "0", replyTo: "r" }
+        );
+    });
+
+    it('should call sendToQueue when called with name, args and messageOptions', async () => {
+      client.sendCommand('test', [1, 'foo'], { persistent: false });
+
+      expect(channelStub.sendToQueue).to.have.been.calledOnce.and
+        .calledWith('q',
+          new Command('test', [1, 'foo']).pack(),
+          { correlationId: "0", replyTo: "r", persistent: false }
+        );
+    });
+
   });
 
 

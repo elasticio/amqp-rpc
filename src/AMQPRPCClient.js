@@ -42,13 +42,17 @@ class AMQPRPCClient extends AMQPEndpoint {
    * @example
    * client.sendCommand('some-command-name', [{foo: 'bar'}, [1, 2, 3]]);
    */
-  async sendCommand(command, args) {
+  async sendCommand(command, args, messageOptions) {
     const cmd = new Command(command, args);
 
     const correlationId = String(this._cmdNumber++);
     const replyTo = this._repliesQueue;
     const timeout = this._params.timeout;
     const requestsQueue = this._params.requestsQueue;
+    const commonProperties = { replyTo, correlationId };
+    const properties = typeof messageOptions === 'object' ?
+        Object.assign({}, messageOptions, commonProperties):
+        commonProperties;
 
     let resolve;
     let reject;
@@ -62,12 +66,13 @@ class AMQPRPCClient extends AMQPEndpoint {
       timer,
       resolve,
       reject,
-      command
+      command,
     });
+
     this._channel.sendToQueue(
       requestsQueue,
       cmd.pack(),
-      {replyTo, correlationId}
+      properties
     );
 
     return promise;
