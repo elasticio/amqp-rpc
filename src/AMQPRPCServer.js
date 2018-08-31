@@ -83,16 +83,17 @@ class AMQPRPCServer extends AMQPEndpoint {
     this._channel.ack(msg);
     const replyTo = msg.properties.replyTo;
     const correlationId = msg.properties.correlationId;
+    const persistent = msg.properties.deliveryMode !== 1;
 
     try {
       const result = await this._dispatchCommand(msg);
 
       const content = new CommandResult(CommandResult.STATES.SUCCESS, result).pack();
-      this._channel.sendToQueue(replyTo, content, {correlationId});
+      this._channel.sendToQueue(replyTo, content, {correlationId, persistent});
 
     } catch (error) {
       const content = new CommandResult(CommandResult.STATES.ERROR, error).pack();
-      this._channel.sendToQueue(replyTo, content, {correlationId});
+      this._channel.sendToQueue(replyTo, content, {correlationId, persistent});
     }
   }
 
