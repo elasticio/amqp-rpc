@@ -149,6 +149,7 @@ class AMQPRPCClient extends AMQPEndpoint {
     const context = this._requests.get(correlationId);
     const {timer, reject, command} = context;
     clearTimeout(timer);
+    this._requests.delete(correlationId);
     reject(new Error(`sendCommand canceled due to ${reason}, command:${command}, correlationId:${correlationId}`));
   }
 
