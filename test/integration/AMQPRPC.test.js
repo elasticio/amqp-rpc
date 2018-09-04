@@ -36,7 +36,7 @@ describe('AMQPRPCClient to AMQPRPCServer', () => {
     connection = await helpers.getAmqpConnection();
     server = new AMQPRPCServer(connection);
     await server.start();
-    client = new AMQPRPCClient(connection, {requestsQueue: server.requestsQueue});
+    client = new AMQPRPCClient(connection, {requestsQueue: server.requestsQueue, timeout: 200 });
     await client.start();
   });
 
@@ -55,6 +55,11 @@ describe('AMQPRPCClient to AMQPRPCServer', () => {
 
       expect(commandStub).to.have.callCount(1);
       expect(commandStub.getCall(0).args).to.deep.equal([]);
+    });
+    it('should delete timedout requests from map', async () => {
+      server.addCommand('command', () => new Promise(sinon.stub()));
+      await expect(client.sendCommand('command')).to.be.rejectedWith(Error);
+      expect(client._requests.size).to.equal(0);
     });
     it('should pass arguments from client call to server', async () => {
       const commandStub = sinon.stub();
