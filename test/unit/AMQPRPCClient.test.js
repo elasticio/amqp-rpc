@@ -47,7 +47,13 @@ describe('AMQPRPCClient', () => {
     let client;
 
     beforeEach(async () => {
-      client = new AMQPRPCClient(connectionStub, { requestsQueue: 'q', repliesQueue: 'r' });
+      client = new AMQPRPCClient(connectionStub, {
+        requestsQueue: 'q',
+        repliesQueue: 'r',
+        defaultMessageOptions: {
+          userId: 'john.doe'
+        }
+      });
       await client.start();
     });
 
@@ -57,7 +63,7 @@ describe('AMQPRPCClient', () => {
       expect(channelStub.sendToQueue).to.have.been.calledOnce.and
         .calledWith('q',
           new Command('test').pack(),
-          { correlationId: "0", replyTo: "r" }
+          { correlationId: "0", replyTo: "r", userId: 'john.doe' }
         );
     });
 
@@ -67,7 +73,7 @@ describe('AMQPRPCClient', () => {
       expect(channelStub.sendToQueue).to.have.been.calledOnce.and
         .calledWith('q',
           new Command('test', [1, 'foo']).pack(),
-          { correlationId: "0", replyTo: "r" }
+          { correlationId: "0", replyTo: "r", userId: 'john.doe' }
         );
     });
 
@@ -77,7 +83,7 @@ describe('AMQPRPCClient', () => {
       expect(channelStub.sendToQueue).to.have.been.calledOnce.and
         .calledWith('q',
           new Command('test', [1, 'foo']).pack(),
-          { correlationId: "0", replyTo: "r", persistent: false }
+          { correlationId: "0", replyTo: "r", persistent: false, userId: 'john.doe' }
         );
     });
 
