@@ -18,6 +18,7 @@ class AMQPRPCClient extends AMQPEndpoint {
    * @param {String} [params.repliesQueue=''] queue for feedback from AMQPRPCServer,
    *    default is '' which means auto-generated queue name
    * @param {Number} [params.timeout=60000] Timeout for cases when server is not responding
+   * @param {Object} [params.defaultMessageOptions] additional options for publishing the request to the queue
    */
   constructor(connection, params = {}) {
     params.repliesQueue = params.repliesQueue || '';
@@ -39,6 +40,7 @@ class AMQPRPCClient extends AMQPEndpoint {
    *
    * @param {String} command Command name
    * @param [Array<*>] args Array of any arguments provided to the RPC server callback
+   * @param [Object] messageOptions options for publishing the request to the queue
    * @returns {Promise<*>}
    * @example
    * client.sendCommand('some-command-name', [{foo: 'bar'}, [1, 2, 3]]);
