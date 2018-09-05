@@ -18,6 +18,7 @@ class AMQPRPCClient extends AMQPEndpoint {
    * @param {String} [params.repliesQueue=''] queue for feedback from AMQPRPCServer,
    *    default is '' which means auto-generated queue name
    * @param {Number} [params.timeout=60000] Timeout for cases when server is not responding
+   * @param {Object} [params.defaultMessageOptions] additional options for publishing the request to the queue
    */
   constructor(connection, params = {}) {
     params.repliesQueue = params.repliesQueue || '';
@@ -31,6 +32,7 @@ class AMQPRPCClient extends AMQPEndpoint {
     this._repliesQueue = params.repliesQueue;
     this._cmdNumber = 0;
     this._requests = new Map();
+    this._defaultMessageOptions = params.defaultMessageOptions || {};
   }
 
   /**
@@ -38,17 +40,24 @@ class AMQPRPCClient extends AMQPEndpoint {
    *
    * @param {String} command Command name
    * @param [Array<*>] args Array of any arguments provided to the RPC server callback
+   * @param [Object] messageOptions options for publishing the request to the queue
    * @returns {Promise<*>}
    * @example
    * client.sendCommand('some-command-name', [{foo: 'bar'}, [1, 2, 3]]);
    */
-  async sendCommand(command, args) {
+  async sendCommand(command, args, messageOptions = {}) {
     const cmd = new Command(command, args);
 
     const correlationId = String(this._cmdNumber++);
     const replyTo = this._repliesQueue;
     const timeout = this._params.timeout;
     const requestsQueue = this._params.requestsQueue;
+    const commonProperties = { replyTo, correlationId };
+
+    const properties = Object.assign({},
+            messageOptions,
+            this._defaultMessageOptions,
+            commonProperties);
 
     let resolve;
     let reject;
@@ -62,12 +71,13 @@ class AMQPRPCClient extends AMQPEndpoint {
       timer,
       resolve,
       reject,
-      command
+      command,
     });
+
     this._channel.sendToQueue(
       requestsQueue,
       cmd.pack(),
-      {replyTo, correlationId}
+      properties
     );
 
     return promise;
