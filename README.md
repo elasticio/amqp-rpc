@@ -26,7 +26,7 @@ There are two ways to run AMQPRPCServer/Client:
 
 ```javascript
 const amqplib = require('amqplib');
-const {AMQPRPCServer, AMQPRPCClient} = require('@elasic.io/amqp-rpc');
+const {AMQPRPCServer, AMQPRPCClient} = require('@elastic.io/amqp-rpc');
 
 
 async function init() {
@@ -56,7 +56,7 @@ Full working example you could find [here](examples/amqp-rpc-with-tmp-queue.js).
 
 ```javascript
 const amqplib = require('amqplib');
-const {AMQPRPCServer, AMQPRPCClient} = require('@elasic.io/amqp-rpc');
+const {AMQPRPCServer, AMQPRPCClient} = require('@elastic.io/amqp-rpc');
 
 
 async function init() {
